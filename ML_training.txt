@@ -1,0 +1,51 @@
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col
+from prophet import Prophet
+import pandas as pd
+import numpy as np
+from joblib import dump
+import os
+
+def main(session: snowpark.Session): 
+
+    # Specify the table name and SQL statement
+    table_name = 'SALES_DATA'
+    sql_stmt = f'SELECT * FROM {table_name}'
+
+    # Execute the SQL statement and retrieve the result set
+    result_set = session.sql(sql_stmt)
+
+    # Convert the result set to a Pandas DataFrame
+    df = pd.DataFrame(result_set.toPandas())
+
+    # Split the data into training and testing sets
+    train_data = df.head(70)  # Change the number of training samples as desired
+    test_data = df.iloc[70:]  # Change the index range for the testing data
+
+    # Create the forecasting model
+    model = Prophet()
+    model.fit(train_data)
+    
+    # Generate forecasts for the testing data
+    future = model.make_future_dataframe(periods=len(test_data))
+    forecast = model.predict(future)
+
+    
+    # Filter out the forecasted values for the testing period
+    forecast = forecast[(forecast['ds'] >= test_data['ds'].min()) &
+                        (forecast['ds'] <= test_data['ds'].max())]
+
+
+    # Join the forecasted values with the actual values
+    joined_data = forecast.merge(test_data, on='ds', how='inner').loc[:, ['ds', 'y', 'yhat']]
+
+    # Print the forecasted values
+    print(joined_data)
+
+    # Upload trained model to a stage
+    model_file = os.path.join('/tmp', 'model.joblib')
+    dump(model, model_file)
+    session.file.put(model_file, "@ML_STAGING", overwrite=True)
+
+    # Return the trained model
+    return "success"

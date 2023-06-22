@@ -1,0 +1,46 @@
+create or replace function forecasting_sales(date_to_be_forecast string)
+returns variant
+language python
+runtime_version = 3.8
+packages = ('joblib','pandas', 'scikit-learn', 'prophet')
+imports=('@ML_STAGING/model.joblib.gz')
+handler = 'main'
+as $$
+import pandas as pd
+from joblib import load
+import os
+import sys
+import sklearn 
+
+def main(date_to_be_forecast):
+
+    input_data = {
+        'ds': [date_to_be_forecast],  # Replace with your desired dates
+    }
+    test_data = pd.DataFrame(input_data)
+    
+    IMPORT_DIRECTORY_NAME = "snowflake_import_directory"
+    import_dir = sys._xoptions[IMPORT_DIRECTORY_NAME]
+
+    forecast_loaded = None
+    
+    with open(os.path.join(import_dir, 'model.joblib.gz'), 'rb') as file:
+        forecast_loaded = load(file)
+    
+    # Vectorize the testing data using the loaded vectorizer
+    #X_test_loaded = test_data['ds']
+
+    # Make predictions on the testing data using the loaded model
+    y_pred_loaded = forecast_loaded.predict(test_data)
+
+    # Return the prediction
+    return round(y_pred_loaded.loc[0, 'yhat'])
+$$;
+
+
+
+
+SELECT forecasting_sales('2021-04-11');
+
+
+
